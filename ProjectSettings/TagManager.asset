@@ -8,14 +8,14 @@ TagManager:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - postprocess
   - Water
   - UI
   - 
   - 
-  - Restricted
-  - Player
-  - Grabbable
+  - 
+  - 
+  - 
   - 
   - 
   - 

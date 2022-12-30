@@ -7,9 +7,9 @@ onBoardingDoNotAskAgain = true
 showPackageIndexes = false
 showStatusBar = false
 scopes = {
-	"last_search.3BE40471" = ""
+	"last_search.3BE40471" = "lod bias"
 	"OpenInspectorPreview.3BE40471" = "0"
-	"currentGroup.3BE40471" = "scene"
+	"currentGroup.3BE40471" = "settings"
 }
 providers = {
 	adb = {
@@ -56,6 +56,7 @@ providers = {
 objectSelectors = {
 }
 recentSearches = [
+	"lo"
 ]
 searchItemFavorites = [
 ]
