@@ -29,9 +29,10 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
 
         private float _previousGuiHotcontrol;
 
+        private Color _upAxisColor = Color.green;
+
         private const string SETTINGS_NAME = "SurfaceAlignTool_Settings";
         private const int IGNORE_RAYCAST_LAYER = 2;
-
 
 
         void OnEnable()
@@ -87,6 +88,12 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
         public override GUIContent toolbarIcon
         {
             get { return _iconContent; }
+        }
+
+        [UnityEditor.ShortcutManagement.Shortcut("Activate Surface Align Tool", KeyCode.S)]
+        static void SurfaceAlignToolShortcut()
+        {
+            ToolManager.SetActiveTool<SurfaceAlignTool>();
         }
 
         private void SetActiveTransform(Transform transform)
@@ -167,10 +174,16 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
             }
 
             Vector3 targetPosition = Handles.PositionHandle(_activeTransform.position, handleRotation);
+          
             Quaternion targetRotation = _activeTransform.rotation;
 
+
             Handles.color = Color.yellow;
+#if UNITY_2022_1_OR_NEWER
             Handles.FreeMoveHandle(1, _activeTransform.position, .25f * HandleUtility.GetHandleSize(_activeTransform.position), Vector3.one, Handles.SphereHandleCap);
+#else
+            Handles.FreeMoveHandle(1, _activeTransform.position, handleRotation, .25f * HandleUtility.GetHandleSize(_activeTransform.position), Vector3.one, Handles.SphereHandleCap);
+#endif
 
             Vector3 mouseRaycastNormal = Vector3.zero;
 
@@ -190,14 +203,29 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
                 if (_previousGuiHotcontrol == 1)
                 {
                     ResetLayer();
-                }
+                }        
+
                 _previousGuiHotcontrol = GUIUtility.hotControl;
             }
 
             // Check colliders in range
-            Collider[] hitColliders = Physics.OverlapSphere(targetPosition, _activeTransformCollider.radius);
+
+#if UNITY_2022_1_OR_NEWER
+            Collider[] hitColliders = new Collider[99];
+            int hitCount = _activeTransform.gameObject.scene.GetPhysicsScene().OverlapSphere(targetPosition, _activeTransformCollider.radius, hitColliders, -5, QueryTriggerInteraction.UseGlobal);
             List<Collider> validColliders = new List<Collider>();
 
+            for (int i = 0; i < hitCount; i++)
+            {
+                if (hitColliders[i].transform != _activeTransform && !_activeTransformChildren.Contains(hitColliders[i].transform) && hitColliders[i] != _activeTransformCollider)
+                {
+                    validColliders.Add(hitColliders[i]);
+                }
+            }
+#else
+            Collider[] hitColliders = Physics.OverlapSphere(targetPosition, _activeTransformCollider.radius);
+            List<Collider> validColliders = new List<Collider>();
+            
             for (int i = 0; i < hitColliders.Length; i++)
             {
                 if (hitColliders[i].transform != _activeTransform && !_activeTransformChildren.Contains(hitColliders[i].transform) && hitColliders[i] != _activeTransformCollider)
@@ -205,6 +233,7 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
                     validColliders.Add(hitColliders[i]);
                 }
             }
+#endif
 
             // Snap and align to collider
             if (validColliders.Count > 0)
@@ -232,7 +261,7 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
 #endif
                     }
                 }
-                else // Using handles
+                else if(GUIUtility.hotControl != 2 && GUIUtility.hotControl != 3) // Using handles
                 {
                     List<NormalPoint> colliderPoints = new List<NormalPoint>();
                     int closestPointIndex = 0;
@@ -282,11 +311,15 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
                 }
             }
 
+
+            // Apply transform changes
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(_activeTransform, "Move " + _activeTransform.name);
+
                 _activeTransform.position = targetPosition;
                 _activeTransform.rotation = targetRotation;
+
                 window.Repaint();
             }
         }
@@ -300,7 +333,11 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
             float range = _settings.RaycastDistance;
             RaycastHit hit;
 
+#if UNITY_2022_1_OR_NEWER
+            if (_activeTransform.gameObject.scene.GetPhysicsScene().Raycast(ray.origin, ray.direction, out hit, range, layerMask))
+#else
             if (Physics.Raycast(ray, out hit, range, layerMask))
+#endif
             {
                 normal = hit.normal;
                 return hit.point;
@@ -343,30 +380,43 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
 
         private Quaternion GetTargetRotation(Vector3 normal)
         {
+            Vector3 upAxis = GetUpAxis();
+
+            return Quaternion.FromToRotation(upAxis, normal) * _activeTransform.rotation;
+        }
+
+        private Vector3 GetUpAxis()
+        {
             Vector3 upAxis = _activeTransform.up;
             switch (_settings.UpAxis)
             {
                 case UpAxis.X:
                     upAxis = _activeTransform.right;
+                    _upAxisColor = Handles.xAxisColor;
                     break;
                 case UpAxis.Y:
                     upAxis = _activeTransform.up;
+                    _upAxisColor = Handles.yAxisColor;
                     break;
                 case UpAxis.Z:
                     upAxis = _activeTransform.forward;
+                    _upAxisColor = Handles.zAxisColor;
                     break;
                 case UpAxis.NegativeX:
                     upAxis = -_activeTransform.right;
+                    _upAxisColor = Handles.xAxisColor;
                     break;
                 case UpAxis.NegativeY:
                     upAxis = -_activeTransform.up;
+                    _upAxisColor = Handles.yAxisColor;
                     break;
                 case UpAxis.NegativeZ:
                     upAxis = -_activeTransform.forward;
+                    _upAxisColor = Handles.zAxisColor;
                     break;
             }
 
-            return Quaternion.FromToRotation(upAxis, normal) * _activeTransform.rotation;
+            return upAxis;
         }
 
         private float GetUpAxisBoundsExtents(Bounds bounds)
@@ -466,6 +516,12 @@ namespace SeppePeelman.EditorTools.SurfaceAlignTool
                 Transform child = t.GetChild(i);
                 FillActiveTransformChildrenListRecursive(child);
             }
+        }
+
+        private void ApplyRandomRotation()
+        {
+            _activeTransform.RotateAround(_activeTransform.position, GetUpAxis(), UnityEngine.Random.Range(-180, 180));
+            
         }
 
         private void EnableSettingsWindow()
